@@ -58,7 +58,6 @@ bool update( const char * versionlist_address ) {
 	
 	patch_all( newer_versions );
 	
-	std::cout << "Program is up to date" << std::endl;
 	std::cout << "Launching program" << std::endl;
 	
 	execute( EXECUTABLE_FILENAME, false );
@@ -150,6 +149,8 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & new
 	
 	bool result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
 	std::cout << "tar result " << result << std::endl;
+	
+	std::cout << "Local version is up to date" << std::endl;
 }
 
 void extract_bspatch() {
@@ -193,6 +194,8 @@ void patch_one( const std::string & name, const std::string & address ) {
 	
 	result = execute( std::string() + "bspatch " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name );
 	std::cout << "bspatch result " << result << std::endl;
+	
+	std::cout << "Patch applied" << std::endl;
 }
 
 void write_help() {
