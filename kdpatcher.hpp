@@ -8,26 +8,23 @@
 #include <tuple>
 #include <unistd.h>
 
-#define execute( string ) \
-char command[] = string; \
-execute_function( command );
-
 #define BUFFER_SIZE 1024
 
-const char * CHANGELOG_NAME = "C:\\GrepoBot\\ChangeLog.txt";
-const char * VERSIONLIST_ADDRESS = "zemechvaly.cz/version_list.txt";
-const char * VERSIONLIST_FILENAME = "version_list.txt";
-const char * ZIP = "GrepoBotInstaller.zip";
+const char * CHANGELOG_FILENAME = "ChangeLog.txt";
+const char * VERSIONLIST_FILENAME = "version_list.dat";
+const char * ZIP_FILENAME = "GrepoBotInstaller.zip";
+const char * EXECUTABLE_FILENAME = "GrepoBot.exe";
 
-bool update();
+bool update( const char * versionlist_address );
+void write_help();
 
-bool execute_string( const std::string & command );
-bool execute_function( char * command );
+bool execute( const std::string & command, bool wait_for_end );
+bool execute( char * command, bool wait_for_end );
 
 void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions );
 void patch_one( const std::string & name, const std::string & address );
 void extract_bspatch();
 
 std::string get_current_version();
-auto get_newer_versions( const std::string & current_version )
+auto get_newer_versions( const std::string & current_version, const char * versionlist_address )
 	-> std::vector< std::pair< std::string, std::string > >;
