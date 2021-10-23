@@ -8,4 +8,5 @@
 # Unignore needed files
 !kdpatcher.hpp
 !kdpatcher.cpp
+!add.cpp
 !makefile

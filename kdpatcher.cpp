@@ -81,7 +81,8 @@ auto get_newer_versions( const std::string & current_version )
 {
 	std::cout << "Downloading version list" << std::endl;
 	
-	execute_string( std::string() + "curl " + VERSIONLIST_ADDRESS  + " -o " + VERSIONLIST_FILENAME );
+	bool result = execute_string( std::string() + "curl " + VERSIONLIST_ADDRESS  + " -o " + VERSIONLIST_FILENAME );
+	std::cout << "curl result " << result << std::endl;
 	
 	std::vector< std::pair< std::string, std::string > > newer_versions;	
 	std::ifstream version_list( VERSIONLIST_FILENAME );
@@ -104,6 +105,7 @@ auto get_newer_versions( const std::string & current_version )
 void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions ) {
 	if ( newer_versions.size() == 1 ) {
 		std::cout << "Local version is up to date" << std::endl;
+		return;
 	}
 	
 	extract_bspatch();
@@ -119,7 +121,8 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & new
 	
 	std::cout << "Extracting patched version" << std::endl;
 	
-	execute_string( std::string() + "tar --extract --file=" + ZIP );
+	bool result = execute_string( std::string() + "tar --extract --file=" + ZIP );
+	std::cout << "tar result " << result << std::endl;
 }
 
 void extract_bspatch() {
@@ -130,35 +133,37 @@ void extract_bspatch() {
 	
 	std::cout << "Extracting file bspatch.exe" << std::endl;
 	
-	std::ifstream istream( "kdpatcher.exe", std::ios::in | std::ios::binary | std::ios::ate );
-	std::ofstream ostream( "bspatch.exe", std::ios::out | std::ios::binary );
+	std::ifstream kdpatcher( "kdpatcher.exe", std::ios::in | std::ios::binary);
+	std::ofstream bspatch( "bspatch.exe", std::ios::out | std::ios::binary );
 	
 	char buffer[ BUFFER_SIZE ];
 	
 	// Read file size
-	istream.seekg( -4 );
-	istream.read( buffer, 4 );
-	int size = * (int *) buffer;
+	kdpatcher.seekg( -8, std::ios::end );
+	kdpatcher.read( buffer, 8 );
+	int64_t blocks = * static_cast< int64_t * >( static_cast< void * >( buffer ) );
 	
 	// Copy file content
-	istream.seekg( -size );
+	kdpatcher.seekg( -( blocks * BUFFER_SIZE + 8 ), std::ios::end );
 	
-	for ( int i = 0; i < size; i += BUFFER_SIZE ) {
+	for ( int i = 0; i < blocks; i++ ) {
 		ZeroMemory( buffer, BUFFER_SIZE );
 		
-		istream.read( buffer, BUFFER_SIZE );
-		ostream.write( buffer, BUFFER_SIZE );
+		kdpatcher.read( buffer, BUFFER_SIZE );
+		bspatch.write( buffer, BUFFER_SIZE );
 	}
+	
+	std::cout << "File bspatch.exe extracted" << std::endl;
 }
 
 void patch_one( const std::string & name, const std::string & address ) {
 	std::cout << "Downloading patch " << name << std::endl;
 	
-	//execute_string( std::string() + "curl " + address + " -o " + name );
-	std::cout <<std::string() + "curl " + address + " -o " + name <<std::endl;
+	bool result = execute_string( std::string() + "curl " + address + " -o " + name );
+	std::cout << "curl result " << result << std::endl;
 	
 	std::cout << "Applying patch " << name << std::endl;
 	
-	//execute_string( std::string() + "bspatch " + ZIP + " " + ZIP + " " + name );
-	std::cout <<std::string() + "bspatch " + ZIP + " " + ZIP + " " + name<<std::endl;
+	result = execute_string( std::string() + "bspatch " + ZIP + " " + ZIP + " " + name );
+	std::cout << "bspatch result " << result << std::endl;
 }
