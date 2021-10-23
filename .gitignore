@@ -1,0 +1,11 @@
+# Ignore everything
+*
+*.*
+
+# Unignore self
+!.gitignore
+
+# Unignore needed files
+!kdpatcher.hpp
+!kdpatcher.cpp
+!makefile
