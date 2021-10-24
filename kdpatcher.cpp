@@ -9,7 +9,7 @@ int main( int argc, char ** argv ) {
 	if ( strcmp( argv[ 1 ], "update" ) == 0 ) {
 		// Update
 		std::cout << "Updating current directory" << std::endl;
-		update( argv[ 2 ] );
+		update( argv[ 0 ], argv[ 2 ] );
 	} else if ( strcmp( argv[ 1 ], "publish" ) == 0 ) {
 		// Publish
 		std::cout << "Publishing build directory to server" << std::endl;
@@ -46,7 +46,7 @@ bool execute( char * command, bool wait_for_end = true ) {
 	return result != 0;
 }
 
-bool update( const char * versionlist_address ) {
+bool update( const char * kdpatcher_executable, const char * versionlist_address ) {
 	std::string current_version = get_current_version();
 	
 	std::cout << "Local version is " << current_version << std::endl;
@@ -54,13 +54,13 @@ bool update( const char * versionlist_address ) {
 	std::vector< std::pair< std::string, std::string > > newer_versions =
 		get_newer_versions( current_version, versionlist_address );
 		
-	std::cout << "Actual version is " << newer_versions.front().first << std::endl;
+	std::cout << "Newest version is " << newer_versions.front().first << std::endl;
 	
-	patch_all( newer_versions );
+	patch_all( newer_versions, kdpatcher_executable );
 	
 	std::cout << "Launching program" << std::endl;
 	
-	execute( EXECUTABLE_FILENAME, false );
+	execute( GREPOBOT_EXECUTABLE, false );
 	
 	return true;
 }
@@ -118,13 +118,13 @@ auto get_newer_versions( const std::string & current_version, const char * versi
 	return newer_versions;
 }
 
-void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions ) {
+void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions, const char * kdpatcher_executable ) {
 	if ( newer_versions.size() == 1 ) {
 		std::cout << "Local version is up to date" << std::endl;
 		return;
 	}
 	
-	extract_bspatch();
+	extract_bspatch( kdpatcher_executable );
 	
 	if ( GetFileAttributes( ZIP_FILENAME ) == INVALID_FILE_ATTRIBUTES ) {
 		std::cout << "Initial release not found" << std::endl;
@@ -153,16 +153,16 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & new
 	std::cout << "Local version is up to date" << std::endl;
 }
 
-void extract_bspatch() {
-	if ( GetFileAttributes( "bspatch.exe" ) != INVALID_FILE_ATTRIBUTES ) {
+void extract_bspatch( const char * kdpatcher_executable ) {
+	if ( GetFileAttributes( BSPATCH_EXECUTABLE ) != INVALID_FILE_ATTRIBUTES ) {
 		std::cout << "File bspatch.exe exists" << std::endl;
 		return;
 	}
 	
 	std::cout << "Extracting file bspatch.exe" << std::endl;
 	
-	std::ifstream kdpatcher( "kdpatcher.exe", std::ios::in | std::ios::binary);
-	std::ofstream bspatch( "bspatch.exe", std::ios::out | std::ios::binary );
+	std::ifstream kdpatcher( kdpatcher_executable, std::ios::in | std::ios::binary);
+	std::ofstream bspatch( BSPATCH_EXECUTABLE, std::ios::out | std::ios::binary );
 	
 	char buffer[ BUFFER_SIZE ];
 	
@@ -192,7 +192,7 @@ void patch_one( const std::string & name, const std::string & address ) {
 	
 	std::cout << "Applying patch " << name << std::endl;
 	
-	result = execute( std::string() + "bspatch " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name );
+	result = execute( std::string() + BSPATCH_EXECUTABLE + " " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name );
 	std::cout << "bspatch result " << result << std::endl;
 	
 	std::cout << "Patch applied" << std::endl;
