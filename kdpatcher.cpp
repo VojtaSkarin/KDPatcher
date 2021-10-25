@@ -9,7 +9,7 @@ int main( int argc, char ** argv ) {
 	if ( strcmp( argv[ 1 ], "update" ) == 0 ) {
 		// Update
 		std::cout << "Updating current directory" << std::endl;
-		update( argv[ 0 ], argv[ 2 ] );
+		update( argv[ 2 ] );
 	} else if ( strcmp( argv[ 1 ], "publish" ) == 0 ) {
 		// Publish
 		std::cout << "Publishing build directory to server" << std::endl;
@@ -22,11 +22,13 @@ int main( int argc, char ** argv ) {
 	return EXIT_SUCCESS;
 }
 
-bool execute( const std::string & command, bool wait_for_end = true ) {
-	return execute( const_cast< char * >( command.c_str() ), wait_for_end );
+bool execute( const std::string & command, bool wait_for_end = true, const char * environment = NULL ) {
+	return execute( const_cast< char * >( command.c_str() ), wait_for_end, environment );
 }
 
-bool execute( char * command, bool wait_for_end = true ) {
+bool execute( char * command, bool wait_for_end = true, const char * const_environment = NULL ) {
+	char * environment = const_cast< char * >( const_environment );
+	
 	STARTUPINFO si;
 	PROCESS_INFORMATION pi;
 	
@@ -34,7 +36,7 @@ bool execute( char * command, bool wait_for_end = true ) {
 	si.cb = sizeof( si );
 	ZeroMemory( &pi, sizeof( pi ) );
 	
-	int result = CreateProcessA( NULL, command, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
+	int result = CreateProcessA( NULL, command, NULL, NULL, FALSE, 0, environment, NULL, &si, &pi);
 
 	if ( wait_for_end ) {
 		WaitForSingleObject( pi.hProcess, INFINITE );
@@ -46,7 +48,7 @@ bool execute( char * command, bool wait_for_end = true ) {
 	return result != 0;
 }
 
-bool update( const char * kdpatcher_executable, const char * versionlist_address ) {
+bool update( const char * versionlist_address ) {
 	std::string current_version = get_current_version();
 	
 	std::cout << "Local version is " << current_version << std::endl;
@@ -56,7 +58,7 @@ bool update( const char * kdpatcher_executable, const char * versionlist_address
 		
 	std::cout << "Newest version is " << newer_versions.front().first << std::endl;
 	
-	patch_all( newer_versions, kdpatcher_executable );
+	patch_all( newer_versions );
 	
 	std::cout << "Launching program" << std::endl;
 	
@@ -118,13 +120,13 @@ auto get_newer_versions( const std::string & current_version, const char * versi
 	return newer_versions;
 }
 
-void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions, const char * kdpatcher_executable ) {
+void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions ) {
 	if ( newer_versions.size() == 1 ) {
 		std::cout << "Local version is up to date" << std::endl;
 		return;
 	}
 	
-	extract_bspatch( kdpatcher_executable );
+	extract_bspatch();
 	
 	if ( GetFileAttributes( ZIP_FILENAME ) == INVALID_FILE_ATTRIBUTES ) {
 		std::cout << "Initial release not found" << std::endl;
@@ -153,7 +155,7 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & new
 	std::cout << "Local version is up to date" << std::endl;
 }
 
-void extract_bspatch( const char * kdpatcher_executable ) {
+void extract_bspatch() {
 	if ( GetFileAttributes( BSPATCH_EXECUTABLE ) != INVALID_FILE_ATTRIBUTES ) {
 		std::cout << "File bspatch.exe exists" << std::endl;
 		return;
@@ -161,15 +163,21 @@ void extract_bspatch( const char * kdpatcher_executable ) {
 	
 	std::cout << "Extracting file bspatch.exe" << std::endl;
 	
+
+	char kdpatcher_executable[ BUFFER_SIZE ] = { 0 };
+	GetModuleFileNameA( NULL, kdpatcher_executable, BUFFER_SIZE );
+
 	std::ifstream kdpatcher( kdpatcher_executable, std::ios::in | std::ios::binary);
 	std::ofstream bspatch( BSPATCH_EXECUTABLE, std::ios::out | std::ios::binary );
 	
-	char buffer[ BUFFER_SIZE ];
+	char buffer[ BUFFER_SIZE ] = { 0 };
 	
 	// Read file size
 	kdpatcher.seekg( -8, std::ios::end );
 	kdpatcher.read( buffer, 8 );
+	
 	int64_t blocks = * static_cast< int64_t * >( static_cast< void * >( buffer ) );
+	std::cout << "blocks " << blocks << std::endl;
 	
 	// Copy file content
 	kdpatcher.seekg( -( blocks * BUFFER_SIZE + 8 ), std::ios::end );
@@ -192,7 +200,7 @@ void patch_one( const std::string & name, const std::string & address ) {
 	
 	std::cout << "Applying patch " << name << std::endl;
 	
-	result = execute( std::string() + BSPATCH_EXECUTABLE + " " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name );
+	result = execute( std::string() + BSPATCH_EXECUTABLE + " " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name, true, "__COMPAT_LAYER=RUNASINVOKER\0" );
 	std::cout << "bspatch result " << result << std::endl;
 	
 	std::cout << "Patch applied" << std::endl;

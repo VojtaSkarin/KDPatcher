@@ -25,4 +25,4 @@ add.o: add.cpp
 	g++ -c $(C_FLAGS) add.cpp -o add.o
 
 clean:
-	del add add.o add.exe kdpatcher kdpatcher.o kdpatcher.exe
+	del build add add.o add.exe kdpatcher kdpatcher.o kdpatcher.exe
