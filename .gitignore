@@ -9,4 +9,5 @@
 !kdpatcher.hpp
 !kdpatcher.cpp
 !add.cpp
+!icon.rc
 !makefile
