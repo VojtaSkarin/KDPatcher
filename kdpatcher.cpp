@@ -164,8 +164,8 @@ void extract_bspatch() {
 	std::cout << "Extracting file bspatch.exe" << std::endl;
 	
 
-	char kdpatcher_executable[ BUFFER_SIZE ] = { 0 };
-	GetModuleFileNameA( NULL, kdpatcher_executable, BUFFER_SIZE );
+	char kdpatcher_executable[ MAX_PATH ] = { 0 };
+	GetModuleFileNameA( NULL, kdpatcher_executable, MAX_PATH );
 
 	std::ifstream kdpatcher( kdpatcher_executable, std::ios::in | std::ios::binary);
 	std::ofstream bspatch( BSPATCH_EXECUTABLE, std::ios::out | std::ios::binary );
