@@ -10,7 +10,7 @@ kdpatcher: kdpatcher.exe
 	echo > kdpatcher
 	
 kdpatcher.exe: kdpatcher.o
-	g++ kdpatcher.o -o kdpatcher
+	g++ -static-libgcc -static -lpthread kdpatcher.o -o kdpatcher
 
 kdpatcher.o: kdpatcher.cpp kdpatcher.hpp
 	g++ -c $(C_FLAGS) kdpatcher.cpp -o kdpatcher.o
