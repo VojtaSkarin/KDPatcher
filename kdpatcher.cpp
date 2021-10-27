@@ -55,11 +55,11 @@ bool update( const char * versionlist_address ) {
 	
 	std::cout << "Local version is " << local_version << std::endl;
 	
-	auto [ all_versions, initial_release_url ] = get_all_versions( versionlist_address );
+	auto [ all_versions, dll_url ] = get_all_versions( versionlist_address );
 		
 	std::cout << "Newest version is " << all_versions.front().first << std::endl;
 	
-	patch_all( all_versions, initial_release_url, local_version );
+	patch_all( all_versions, dll_url, local_version );
 	
 	std::cout << "Launching program" << std::endl;
 	
@@ -118,15 +118,14 @@ auto get_all_versions( const char * versionlist_address )
 		all_versions.push_back( { name, path } );
 	} while ( ! version_list.eof() );
 	
-	std::pair< std::string, std::string > initial_release_url = std::move( all_versions.back() );
+	std::pair< std::string, std::string > dll_url = std::move( all_versions.back() );
 	all_versions.pop_back();
 	
-	return { all_versions, initial_release_url };
+	return { all_versions, dll_url };
 }
 
-void patch_all( const std::vector< std::pair< std::string, std::string > > & all_versions, const std::pair< std::string, std::string > & initial_release_url, const std::string & local_version ) {
+void patch_all( const std::vector< std::pair< std::string, std::string > > & all_versions, const std::pair< std::string, std::string > & dll_url, const std::string & local_version ) {
 	int i = all_versions.size() - 1;
-	bool revert_to_init = false;
 	
 	// Move to actual version
 	for ( ; i >= 0 && all_versions.at( i ).first != local_version; i-- );
@@ -135,14 +134,15 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & all
 		// Up to date
 		return;
 	} else if ( i < 0 ) {
-		// Something went wrong, revert to init and patch to newest
 		i = all_versions.size() - 1;
-		revert_to_init = true;
 	}
 	
 	extract_bspatch();
 	
-	download_init( initial_release_url.second, all_versions.back().second, revert_to_init );
+	bool result = download_init( dll_url.second, all_versions.back().second );
+	if ( ! result ) {
+		i = all_versions.size() - 1;
+	}
 
 	for ( ; i > 0; i-- ) {
 		const std::string & current_version = all_versions.at( i ).first;
@@ -155,7 +155,7 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & all
 	
 	std::cout << "Extracting patched version" << std::endl;
 	
-	bool result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
+	result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
 	std::cout << "tar result " << result << std::endl;
 	
 	std::cout << "Local version is up to date" << std::endl;
@@ -163,12 +163,12 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & all
 
 void extract_bspatch() {
 	if ( GetFileAttributes( BSPATCH_EXECUTABLE ) != INVALID_FILE_ATTRIBUTES ) {
-		std::cout << "File bspatch.exe exists" << std::endl;
+		std::cout << "File " << BSPATCH_EXECUTABLE << " exists" << std::endl;
 		return;
 	}
 	
-	std::cout << "Extracting file bspatch.exe" << std::endl;
-	
+	std::cout << BSPATCH_EXECUTABLE << " not found" << std::endl;
+	std::cout << "Extracting " << BSPATCH_EXECUTABLE << std::endl;
 
 	char kdpatcher_executable[ MAX_PATH ] = { 0 };
 	GetModuleFileNameA( NULL, kdpatcher_executable, MAX_PATH );
@@ -216,25 +216,30 @@ void extract_bspatch() {
 	std::cout << "File bspatch.exe extracted" << std::endl;
 }
 
-void download_init( const std::string & initial_release_url, const std::string & first_version_url, bool revert_to_init ) {
-	if ( GetFileAttributes( ZIP_FILENAME ) != INVALID_FILE_ATTRIBUTES and ! revert_to_init ) {
-		std::cout << "Initial release found" << std::endl;
-		return;
+bool download_init( const std::string & dll_url, const std::string & first_version_url ) {
+	if ( GetFileAttributes( ZIP_FILENAME ) != INVALID_FILE_ATTRIBUTES ) {
+		std::cout << ZIP_FILENAME << " found" << std::endl;
+		return true;
 	}
 	
-	std::cout << "Initial release not found" << std::endl;
-	std::cout << "Downloading initial release" << std::endl;
+	std::cout << ZIP_FILENAME << " not found" << std::endl;
+	std::cout << "Downloading " << ZIP_FILENAME << std::endl;
 	
-	bool result = execute( std::string() + "curl -L " + initial_release_url + " -o " + INITIAL_RELEASE_FILENAME );
+	bool result = execute( std::string() + "curl -L " + first_version_url + " -o " + ZIP_FILENAME );
 	std::cout << "curl result " << result << std::endl;
 	
-	result = execute( std::string() + "tar --extract --file=" + INITIAL_RELEASE_FILENAME );
+	result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
 	std::cout << "tar result " << result << std::endl;
 	
-	// Maybe delete?
-
-	result = execute( std::string() + "curl -L " + first_version_url + " -o " + ZIP_FILENAME );
-	std::cout << "curl result " << result << std::endl;
+	if ( GetFileAttributes( LIBCEF_DLL ) == INVALID_FILE_ATTRIBUTES ) {
+		std::cout << LIBCEF_DLL << " not found" << std::endl;
+		std::cout << "Downloading " << LIBCEF_DLL << std::endl;
+		
+		result = execute( std::string() + "curl -L " + dll_url + " -o " + LIBCEF_DLL );
+		std::cout << "curl result " << result << std::endl;
+	}
+	
+	return false;
 }
 
 void patch_one( const std::string & name, const std::string & address ) {
@@ -244,8 +249,6 @@ void patch_one( const std::string & name, const std::string & address ) {
 	std::cout << "curl result " << result << std::endl;
 	
 	std::cout << "Applying patch " << name << std::endl;
-	int i;
-	std::cin >> i;
 	
 	result = execute( std::string() + BSPATCH_EXECUTABLE + " " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name, true, "__COMPAT_LAYER=RUNASINVOKER\0" );
 	std::cout << "bspatch result " << result << std::endl;
