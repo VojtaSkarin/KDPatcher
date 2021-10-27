@@ -1,6 +1,6 @@
 #include "kdpatcher.hpp"
 
-int main( int argc, char ** argv ) {
+int main( int argc, char ** argv ) {	
 	if ( argc != 3 ) {
 		write_help();
 		return EXIT_FAILURE;
@@ -27,6 +27,8 @@ bool execute( const std::string & command, bool wait_for_end = true, const char 
 }
 
 bool execute( char * command, bool wait_for_end = true, const char * const_environment = NULL ) {
+	std::cout << command << std::endl;
+	
 	char * environment = const_cast< char * >( const_environment );
 	
 	STARTUPINFO si;
@@ -49,16 +51,15 @@ bool execute( char * command, bool wait_for_end = true, const char * const_envir
 }
 
 bool update( const char * versionlist_address ) {
-	std::string current_version = get_current_version();
+	std::string local_version = get_local_version();
 	
-	std::cout << "Local version is " << current_version << std::endl;
+	std::cout << "Local version is " << local_version << std::endl;
 	
-	std::vector< std::pair< std::string, std::string > > newer_versions =
-		get_newer_versions( current_version, versionlist_address );
+	auto [ all_versions, initial_release_url ] = get_all_versions( versionlist_address );
 		
-	std::cout << "Newest version is " << newer_versions.front().first << std::endl;
+	std::cout << "Newest version is " << all_versions.front().first << std::endl;
 	
-	patch_all( newer_versions );
+	patch_all( all_versions, initial_release_url, local_version );
 	
 	std::cout << "Launching program" << std::endl;
 	
@@ -67,7 +68,7 @@ bool update( const char * versionlist_address ) {
 	return true;
 }
 
-std::string get_current_version() {
+std::string get_local_version() {
 	if ( GetFileAttributes( CHANGELOG_FILENAME ) == INVALID_FILE_ATTRIBUTES ) {
 		std::cout << "Cannot find local version" << std::endl;
 		return "none";
@@ -80,25 +81,25 @@ std::string get_current_version() {
 	
 	int start = line.find( "[" );
 	int end = line.find( "]" );
-	std::string version = line.substr( start + 2, end - start - 3 );
+	std::string local_version = line.substr( start + 2, end - start - 3 );
 	
 	int index = 0;
-	while ( ( index = version.find( " " ) ) != -1 ) {
-		version.at( index ) = '_';
+	while ( ( index = local_version.find( " " ) ) != -1 ) {
+		local_version.at( index ) = '_';
 	}
 	
-	return version;
+	return local_version;
 }
 
-auto get_newer_versions( const std::string & current_version, const char * versionlist_address )
-	-> std::vector< std::pair< std::string, std::string > >
+auto get_all_versions( const char * versionlist_address )
+	-> std::pair< std::vector< std::pair< std::string, std::string > >, std::pair< std::string, std::string > >
 {
 	std::cout << "Downloading version list" << std::endl;
 	
 	bool result = execute( std::string() + "curl " + versionlist_address  + " -o " + VERSIONLIST_FILENAME );
 	std::cout << "curl result " << result << std::endl;
 	
-	std::vector< std::pair< std::string, std::string > > newer_versions;	
+	std::vector< std::pair< std::string, std::string > > all_versions;	
 	std::ifstream version_list( VERSIONLIST_FILENAME );
 	
 	do {
@@ -114,35 +115,40 @@ auto get_newer_versions( const std::string & current_version, const char * versi
 		std::string name = current.substr( 0, start );
 		std::string path = current.substr( start + 2 );
 		
-		newer_versions.push_back( { name, path } );
-	} while ( newer_versions.back().first != current_version && ! version_list.eof() );
+		all_versions.push_back( { name, path } );
+	} while ( ! version_list.eof() );
 	
-	return newer_versions;
+	std::pair< std::string, std::string > initial_release_url = std::move( all_versions.back() );
+	all_versions.pop_back();
+	
+	return { all_versions, initial_release_url };
 }
 
-void patch_all( const std::vector< std::pair< std::string, std::string > > & newer_versions ) {
-	if ( newer_versions.size() == 1 ) {
-		std::cout << "Local version is up to date" << std::endl;
+void patch_all( const std::vector< std::pair< std::string, std::string > > & all_versions, const std::pair< std::string, std::string > & initial_release_url, const std::string & local_version ) {
+	int i = all_versions.size() - 1;
+	bool revert_to_init = false;
+	
+	// Move to actual version
+	for ( ; i >= 0 && all_versions.at( i ).first != local_version; i-- );
+	
+	if ( i == 0 ) {
+		// Up to date
 		return;
+	} else if ( i < 0 ) {
+		// Something went wrong, revert to init and patch to newest
+		i = all_versions.size() - 1;
+		revert_to_init = true;
 	}
 	
 	extract_bspatch();
 	
-	if ( GetFileAttributes( ZIP_FILENAME ) == INVALID_FILE_ATTRIBUTES ) {
-		std::cout << "Initial release not found" << std::endl;
-		std::cout << "Downloading initial release" << std::endl;
+	download_init( initial_release_url.second, all_versions.back().second, revert_to_init );
+
+	for ( ; i > 0; i-- ) {
+		const std::string & current_version = all_versions.at( i ).first;
+		const auto & [ name, address ] = all_versions.at( i - 1 );
 		
-		bool result = execute( std::string() + "curl -L " + newer_versions.back().second + " -o " + ZIP_FILENAME );
-		std::cout << "curl result " << result << std::endl;
-	} else {
-		std::cout << "Initial release found" << std::endl;
-	}
-	
-	for ( int i = newer_versions.size() - 1; i > 0; i-- ) {
-		const std::string & local_version = newer_versions.at( i ).first;
-		const auto & [ name, address ] = newer_versions.at( i - 1 );
-		
-		std::cout << "Patching from " << local_version << " to " << name << std::endl;
+		std::cout << "Patching from " << current_version << " to " << name << std::endl;
 		
 		patch_one( name, address );
 	}
@@ -172,9 +178,27 @@ void extract_bspatch() {
 	
 	char buffer[ BUFFER_SIZE ] = { 0 };
 	
+	printf( "sizeof(int64_t) = %llu\n", sizeof( int64_t ) );
+	printf( "sizeof(int64_t *) = %llu\n", sizeof( int64_t * ) );
+	printf( "sizeof(void *) = %llu\n", sizeof( void * ) );
+	
+	puts( "Before reading" );
+	for ( int i = 0; i < 8; i++ ) {
+		printf( "%d ", buffer[ i ] );
+	}
+	printf( "\n" );
+	
 	// Read file size
-	kdpatcher.seekg( -8, std::ios::end );
-	kdpatcher.read( buffer, 8 );
+	kdpatcher.seekg( -WORD, std::ios::end );
+	kdpatcher.read( buffer, WORD );
+	
+	puts( "After reading" );
+	for ( int i = 0; i < 8; i++ ) {
+		printf( "%d ", buffer[ i ] );
+	}
+	printf( "\n" );
+	
+	printf( "%" PRId64 "\n", * static_cast< int64_t * >( static_cast< void * >( buffer ) ) );
 	
 	int64_t blocks = * static_cast< int64_t * >( static_cast< void * >( buffer ) );
 	std::cout << "blocks " << blocks << std::endl;
@@ -192,6 +216,27 @@ void extract_bspatch() {
 	std::cout << "File bspatch.exe extracted" << std::endl;
 }
 
+void download_init( const std::string & initial_release_url, const std::string & first_version_url, bool revert_to_init ) {
+	if ( GetFileAttributes( ZIP_FILENAME ) != INVALID_FILE_ATTRIBUTES and ! revert_to_init ) {
+		std::cout << "Initial release found" << std::endl;
+		return;
+	}
+	
+	std::cout << "Initial release not found" << std::endl;
+	std::cout << "Downloading initial release" << std::endl;
+	
+	bool result = execute( std::string() + "curl -L " + initial_release_url + " -o " + INITIAL_RELEASE_FILENAME );
+	std::cout << "curl result " << result << std::endl;
+	
+	result = execute( std::string() + "tar --extract --file=" + INITIAL_RELEASE_FILENAME );
+	std::cout << "tar result " << result << std::endl;
+	
+	// Maybe delete?
+
+	result = execute( std::string() + "curl -L " + first_version_url + " -o " + ZIP_FILENAME );
+	std::cout << "curl result " << result << std::endl;
+}
+
 void patch_one( const std::string & name, const std::string & address ) {
 	std::cout << "Downloading patch " << name << std::endl;
 	
@@ -199,6 +244,8 @@ void patch_one( const std::string & name, const std::string & address ) {
 	std::cout << "curl result " << result << std::endl;
 	
 	std::cout << "Applying patch " << name << std::endl;
+	int i;
+	std::cin >> i;
 	
 	result = execute( std::string() + BSPATCH_EXECUTABLE + " " + ZIP_FILENAME + " " + ZIP_FILENAME + " " + name, true, "__COMPAT_LAYER=RUNASINVOKER\0" );
 	std::cout << "bspatch result " << result << std::endl;
