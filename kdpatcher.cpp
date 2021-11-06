@@ -1,6 +1,7 @@
 #include "kdpatcher.hpp"
 
-int main( int argc, char ** argv ) {	
+int main( int argc, char ** argv ) {
+/*	
 	if ( argc != 3 ) {
 		write_help();
 		return EXIT_FAILURE;
@@ -19,6 +20,11 @@ int main( int argc, char ** argv ) {
 		return EXIT_FAILURE;
 	}
 	
+	return EXIT_SUCCESS;
+*/
+	// Update
+	std::cout << "Updating current directory" << std::endl;
+	update( "zemechvaly.cz/version_list.txt" );
 	return EXIT_SUCCESS;
 }
 
@@ -51,18 +57,21 @@ bool execute( char * command, bool wait_for_end = true, const char * const_envir
 }
 
 bool update( const char * versionlist_address ) {
+	std::cout << 0 << std::endl;
 	std::string local_version = get_local_version();
 	
 	std::cout << "Local version is " << local_version << std::endl;
 	
-	auto [ all_versions, dll_url ] = get_all_versions( versionlist_address );
+	std::cout << 1 << std::endl;
+	auto all_versions = get_all_versions( versionlist_address );
 		
 	std::cout << "Newest version is " << all_versions.front().first << std::endl;
 	
-	patch_all( all_versions, dll_url, local_version );
+	patch_all( all_versions, local_version );
 	
 	std::cout << "Launching program" << std::endl;
 	
+	std::cout << 6 << std::endl;
 	execute( GREPOBOT_EXECUTABLE, false );
 	
 	return true;
@@ -92,7 +101,7 @@ std::string get_local_version() {
 }
 
 auto get_all_versions( const char * versionlist_address )
-	-> std::pair< std::vector< std::pair< std::string, std::string > >, std::pair< std::string, std::string > >
+	-> std::vector< std::pair< std::string, std::string > >
 {
 	std::cout << "Downloading version list" << std::endl;
 	
@@ -118,13 +127,10 @@ auto get_all_versions( const char * versionlist_address )
 		all_versions.push_back( { name, path } );
 	} while ( ! version_list.eof() );
 	
-	std::pair< std::string, std::string > dll_url = std::move( all_versions.back() );
-	all_versions.pop_back();
-	
-	return { all_versions, dll_url };
+	return all_versions;
 }
 
-void patch_all( const std::vector< std::pair< std::string, std::string > > & all_versions, const std::pair< std::string, std::string > & dll_url, const std::string & local_version ) {
+void patch_all( const std::vector< std::pair< std::string, std::string > > & all_versions, const std::string & local_version ) {
 	int i = all_versions.size() - 1;
 	
 	// Move to actual version
@@ -133,17 +139,22 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & all
 	if ( i == 0 ) {
 		// Up to date
 		return;
-	} else if ( i < 0 ) {
-		i = all_versions.size() - 1;
 	}
 	
+	if ( i < 0 ) {
+		// Local version is unknown
+		i = all_versions.size() - 1;
+	}
+	std::cout << 2 << std::endl;
 	extract_bspatch();
 	
-	bool result = download_init( dll_url.second, all_versions.back().second );
+	std::cout << 3 << std::endl;
+	bool result = download_init( all_versions.back().second );
 	if ( ! result ) {
 		i = all_versions.size() - 1;
 	}
 
+	std::cout << 4 << std::endl;
 	for ( ; i > 0; i-- ) {
 		const std::string & current_version = all_versions.at( i ).first;
 		const auto & [ name, address ] = all_versions.at( i - 1 );
@@ -155,6 +166,7 @@ void patch_all( const std::vector< std::pair< std::string, std::string > > & all
 	
 	std::cout << "Extracting patched version" << std::endl;
 	
+	std::cout << 5 << std::endl;
 	result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
 	std::cout << "tar result " << result << std::endl;
 	
@@ -198,7 +210,7 @@ void extract_bspatch() {
 	}
 	printf( "\n" );
 	
-	printf( "%" PRId64 "\n", * static_cast< int64_t * >( static_cast< void * >( buffer ) ) );
+	printf( "%" PRId64 " blocks\n", * static_cast< int64_t * >( static_cast< void * >( buffer ) ) );
 	
 	int64_t blocks = * static_cast< int64_t * >( static_cast< void * >( buffer ) );
 	std::cout << "blocks " << blocks << std::endl;
@@ -216,7 +228,7 @@ void extract_bspatch() {
 	std::cout << "File bspatch.exe extracted" << std::endl;
 }
 
-bool download_init( const std::string & dll_url, const std::string & first_version_url ) {
+bool download_init( const std::string & first_version_url ) {
 	if ( GetFileAttributes( ZIP_FILENAME ) != INVALID_FILE_ATTRIBUTES ) {
 		std::cout << ZIP_FILENAME << " found" << std::endl;
 		return true;
@@ -225,19 +237,11 @@ bool download_init( const std::string & dll_url, const std::string & first_versi
 	std::cout << ZIP_FILENAME << " not found" << std::endl;
 	std::cout << "Downloading " << ZIP_FILENAME << std::endl;
 	
-	bool result = execute( std::string() + "curl -L " + first_version_url + " -o " + ZIP_FILENAME );
+	bool result = execute( std::string() + "curl -L " + first_version_url + " -o " + ZIP_COMPRESSED_FILENAME );
 	std::cout << "curl result " << result << std::endl;
 	
-	result = execute( std::string() + "tar --extract --file=" + ZIP_FILENAME );
+	result = execute( std::string() + "tar --extract --file=" + ZIP_COMPRESSED_FILENAME );
 	std::cout << "tar result " << result << std::endl;
-	
-	if ( GetFileAttributes( LIBCEF_DLL ) == INVALID_FILE_ATTRIBUTES ) {
-		std::cout << LIBCEF_DLL << " not found" << std::endl;
-		std::cout << "Downloading " << LIBCEF_DLL << std::endl;
-		
-		result = execute( std::string() + "curl -L " + dll_url + " -o " + LIBCEF_DLL );
-		std::cout << "curl result " << result << std::endl;
-	}
 	
 	return false;
 }
